@@ -6,8 +6,6 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
 sys.path.append(PROJECT_ROOT)
 
-print("✅ Script loaded. Name is:", __name__) # Debug -- didn't run for me for some reason
-
 import pandas as pd
 from src.preprocessing import (
     scale_numerical_features,
@@ -43,10 +41,12 @@ def main():
     lyrics_df = pd.DataFrame(tfidf_matrix.toarray(), columns=tfidf_model.get_feature_names_out())
 
     # Combine features
-    drop_cols = ['artist(s)', 'song', 'album', 'release_date', 'text', 'popularity', 'success_level', 'length']
+    drop_cols = ['artist(s)', 'song', 'album', 'release_date', 'text', 'popularity', 'success_level']
     X_base = df_sample.drop(columns=[col for col in drop_cols if col in df_sample.columns]).reset_index(drop=True)
     X = pd.concat([X_base, lyrics_df.reset_index(drop=True)], axis=1)
-    y = df_sample['success_level']
+    y = df_sample[['success_level']].copy()
+    y.loc[:, 'popularity'] = df_sample['popularity']
+
 
     # Save results
     print("💾 Saving processed data...")

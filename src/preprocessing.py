@@ -1,8 +1,8 @@
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.preprocessing import MinMaxScaler
 import pandas as pd
 
 def scale_numerical_features(X, numerical_cols):
-    scaler = StandardScaler()
+    scaler = MinMaxScaler()
     X[numerical_cols] = scaler.fit_transform(X[numerical_cols])
     return X
 
