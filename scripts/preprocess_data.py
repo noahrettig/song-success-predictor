@@ -36,14 +36,17 @@ def main():
 
     # TF-IDF vectorization
     print("🧠 Vectorizing lyrics...")
-    tfidf_matrix, tfidf_model = tfidf_features(df['text'], max_features=500)
+        
+    df_sample = df.sample(9000, random_state=42).reset_index(drop=True) # TEMP: sample a smaller subset to reduce memory pressure
+
+    tfidf_matrix, tfidf_model = tfidf_features(df_sample['text'], max_features=500)
     lyrics_df = pd.DataFrame(tfidf_matrix.toarray(), columns=tfidf_model.get_feature_names_out())
 
     # Combine features
     drop_cols = ['artist(s)', 'song', 'album', 'release_date', 'text', 'popularity', 'success_level', 'length']
-    X_base = df.drop(columns=[col for col in drop_cols if col in df.columns]).reset_index(drop=True)
+    X_base = df_sample.drop(columns=[col for col in drop_cols if col in df_sample.columns]).reset_index(drop=True)
     X = pd.concat([X_base, lyrics_df.reset_index(drop=True)], axis=1)
-    y = df['success_level']
+    y = df_sample['success_level']
 
     # Save results
     print("💾 Saving processed data...")
