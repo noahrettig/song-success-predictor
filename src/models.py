@@ -1,12 +1,13 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, mean_squared_error
+from sklearn.metrics import accuracy_score, recall_score, precision_score, mean_squared_error, classification_report, confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
 import joblib
 
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import make_pipeline
@@ -36,6 +37,25 @@ def main():
         preds = model.predict(X_test)
         acc = accuracy_score(y_test_class, preds)
         print(f"{name} Accuracy: {acc:.4f}")
+        recall = recall_score(y_test_class, preds, average='macro', zero_division=0)
+        print(f"{name} Recall: {recall:.4f}")
+        precision = precision_score(y_test_class, preds, average='macro', zero_division=0)
+        print(f"{name} Precision: {precision:.4f}")
+
+        # Classification Report
+        print(f"{name} Classification Report:")
+        print(classification_report(y_test_class, preds, zero_division=0))
+
+        # Confusion Matrix
+        if name == "Decision Tree":
+            cm = confusion_matrix(y_test_class, preds)
+            plt.figure(figsize=(6, 5))
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=sorted(y_test_class.unique()), yticklabels=sorted(y_test_class.unique()))
+            plt.xlabel("Predicted Label")
+            plt.ylabel("True Label")
+            plt.title(f"{name} Confusion Matrix")
+            plt.tight_layout()
+            plt.show()
 
         # Save model
         path = f"models/{name.lower().replace(' ', '_')}.joblib"

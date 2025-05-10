@@ -4,7 +4,7 @@ import pandas as pd
 
 def main():
     print("🔄 Loading dataset...")
-    df = pd.read_csv('data/spotify_dataset_rendered_with_labels.csv')
+    df = pd.read_csv('data/spotify_dataset_labeled.csv')
 
     # Convert mm:ss to seconds
     df['length'] = df['length'].apply(convert_to_seconds)
@@ -62,7 +62,6 @@ def tfidf_features(X_text, max_features=500):
     tfidf = TfidfVectorizer(max_features=max_features, stop_words='english')
     X_tfidf = tfidf.fit_transform(X_text)
     return X_tfidf, tfidf
-
 
 if __name__ == '__main__':
     main()
