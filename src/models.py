@@ -47,16 +47,6 @@ def main():
         print(f"{name} Classification Report:")
         print(classification_report(y_test_class, preds, zero_division=0))
 
-        # Confusion Matrix
-        # cm = confusion_matrix(y_test_class, preds)
-        # plt.figure(figsize=(6, 5))
-        # sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=sorted(y_test_class.unique()), yticklabels=sorted(y_test_class.unique()))
-        # plt.xlabel("Predicted Label")
-        # plt.ylabel("True Label")
-        # plt.title(f"{name} Confusion Matrix")
-        # plt.tight_layout()
-        # plt.show()
-
         # Save model
         path = f"models/{name.lower().replace(' ', '_')}.joblib"
         joblib.dump(model, path)
