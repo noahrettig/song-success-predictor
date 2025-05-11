@@ -2,45 +2,92 @@
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import KFold
 from sklearn.metrics import mean_squared_error
+import matplotlib.pyplot as plt
+
+def sum_square_error(x, y, theta):
+    y_hat = x @ theta
+    return np.sum((y - y_hat) ** 2)
+
+def ridge_theta(X, y, lam):
+    d = X.shape[1]
+    return np.linalg.solve(X.T @ X + lam * np.eye(d), X.T @ y)
+
+def cross_val_ridge(X, y, lambdas, k=5):
+    kf = KFold(n_splits=k, shuffle=True, random_state=42)
+    avg_mse = []
+
+    for lam in lambdas:
+        mse_folds = []
+        for train_idx, val_idx in kf.split(X):
+            X_train, X_val = X[train_idx], X[val_idx]
+            y_train, y_val = y[train_idx], y[val_idx]
+            theta = ridge_theta(X_train, y_train, lam)
+            y_pred = X_val @ theta
+            mse_folds.append(mean_squared_error(y_val, y_pred))
+        avg_mse.append(np.mean(mse_folds))
+
+    return lambdas[np.argmin(avg_mse)], avg_mse
 
 def main():
     print("📦 Loading data...")
-    X = pd.read_csv("data/X_processed.csv")
-    y = pd.read_csv("data/y_labels.csv")["popularity"]  # Predicting raw popularity
+    X_df = pd.read_csv("data/X_processed.csv")
+    y_df = pd.read_csv("data/y_labels.csv")["popularity"]
 
-    # Drop unwanted columns if present
+    # Drop non-numeric or redundant columns
     excluded_cols = {
         "artist(s)", "song", "album", 
-        'genre', 'key', 'emotion', 'release_date',  # raw categorical 
-        "popularity",'success_level', 'text'        # target or raw text
+        "genre", "key", "emotion", "text", "release_date", 'release_year' 
+        "popularity", "success_level"
     }
-    X = X.drop(columns=[col for col in X.columns if col in excluded_cols])
+    X_df = X_df.drop(columns=[col for col in X_df.columns if col in excluded_cols])
 
-    # 🔀 Train/test split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    # Convert to numpy and standardize
+    X = X_df.to_numpy(dtype=np.float64)
+    y = y_df.to_numpy(dtype=np.float64).reshape(-1, 1)
 
-    # ➕ Add bias term (intercept column of 1s)
-    ones_train = np.ones((X_train.shape[0], 1))
-    X_train_aug = np.concatenate([ones_train, X_train.to_numpy(dtype=np.float64)], axis=1)
+    X_mean = X.mean(axis=0)
+    X_std = X.std(axis=0) + 1e-8  # prevent divide-by-zero
+    X = (X - X_mean) / X_std
+    y_mean = y.mean()
+    y = y - y_mean
 
-    ones_test = np.ones((X_test.shape[0], 1))
-    X_test_aug = np.concatenate([ones_test, X_test.to_numpy(dtype=np.float64)], axis=1)
+    # Add bias column
+    X = np.hstack([np.ones((X.shape[0], 1)), X])
 
-    y_train_np = y_train.to_numpy().reshape(-1, 1)
-    y_test_np = y_test.to_numpy().reshape(-1, 1)
+    # Split into train/test
+    np.random.seed(42)
+    indices = np.random.permutation(X.shape[0])
+    split = int(0.8 * len(indices))
+    train_idx, test_idx = indices[:split], indices[split:]
+    X_train, X_test = X[train_idx], X[test_idx]
+    y_train, y_test = y[train_idx], y[test_idx]
 
-    # 🧠 Closed-form solution: theta = (XᵀX)⁻¹Xᵀy
-    print("📐 Computing weights using normal equation...")
-    # XTX = X_train_aug.T @ X_train_aug
-    # XTy = X_train_aug.T @ y_train_np
-    theta = np.linalg.pinv(X_train_aug) @ y_train_np    # got singular matrix error, so changed from linalg.solve to this... 
+    # Cross-validate ridge regression 
+    print("🔁 Performing manual Ridge Regression with CV...")
+    lambda_values = np.logspace(-3, 3, 50)
+    best_lambda, all_mse = cross_val_ridge(X_train, y_train, lambda_values, k=5)
 
-    # 📈 Evaluate on test set
-    y_pred = X_test_aug @ theta
-    mse = mean_squared_error(y_test_np, y_pred)
-    print(f"\n✅ Test Mean Squared Error (MSE): {mse:.2f}")
+    theta_best = ridge_theta(X_train, y_train, best_lambda)
+    train_mse = mean_squared_error(y_train, X_train @ theta_best)
+    test_mse = mean_squared_error(y_test, X_test @ theta_best)
+
+    print(f"\n✅ Best lambda: {best_lambda:.4f}")
+    print(f"📉 Train MSE: {train_mse:.2f}")
+    print(f"📊 Test MSE: {test_mse:.2f}")
+
+    # 📈 Plotting
+    plt.figure(figsize=(8, 5))
+    plt.semilogx(lambda_values, all_mse, marker='o')
+    plt.axvline(best_lambda, color='red', linestyle='--', label=f'Best λ = {best_lambda:.4f}')
+    plt.xlabel("Lambda")
+    plt.ylabel("5-Fold Cross-Validated MSE")
+    plt.title("MSE vs Lambda")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
     main()

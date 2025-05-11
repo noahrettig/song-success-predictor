@@ -41,6 +41,7 @@ def main():
     # Convert release_date to release_month and release_year
     df['release_date'] = pd.to_datetime(df['release_date'], errors='coerce')
     df['release_year'] = df['release_date'].dt.year
+    df['years_since_release'] = 2025 - df['release_year']
     df['release_month'] = df['release_date'].dt.month
 
     # Expand multi-genre column
@@ -51,7 +52,7 @@ def main():
     df = encode_categorical_features(df, categorical_cols)
 
     # Normalize numerical attributes
-    numerical_cols = ['length', 'tempo', 'loudness_(db)']
+    numerical_cols = ['length', 'tempo', 'loudness_(db)', 'years_since_release', 'release_month']
     df = scale_numerical_features(df, numerical_cols)
 
     # TF-IDF vectorization
