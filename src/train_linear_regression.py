@@ -30,6 +30,49 @@ def cross_val_ridge(X, y, lambdas, k=5):
 
     return lambdas[np.argmin(avg_mse)], avg_mse
 
+def forward_selection(X_full, y, feature_names, min_improvement=1e-2, max_features=50):
+    n, d = X_full.shape
+    selected = []
+    remaining = list(range(d))
+    current_X = np.ones((n, 1))  # Bias term
+    sse_history = []
+
+    last_sse = np.inf
+
+    for _ in range(max_features):
+        best_sse = np.inf
+        best_feature = None
+        best_theta = None
+
+        for f in remaining:
+            candidate_X = np.hstack([current_X, X_full[:, f].reshape(-1, 1)])
+            try:
+                theta = np.linalg.solve(candidate_X.T @ candidate_X, candidate_X.T @ y)
+            except np.linalg.LinAlgError:
+                continue
+            sse = sum_square_error(candidate_X, y, theta)
+            if sse < best_sse:
+                best_sse = sse
+                best_feature = f
+                best_theta = theta
+
+        improvement = last_sse - best_sse
+        if best_feature is None or improvement < min_improvement:
+            print(f"🛑 Stopping: no feature improves SSE by at least {min_improvement}")
+            break
+
+        selected.append(best_feature)
+        remaining.remove(best_feature)
+        current_X = np.hstack([current_X, X_full[:, best_feature].reshape(-1, 1)])
+        sse_history.append(best_sse)
+        last_sse = best_sse
+
+        print(f"✅ Added feature '{feature_names[best_feature]}' | SSE: {best_sse:.2f} | Δ: {improvement:.4f}")
+
+    selected_names = [feature_names[i] for i in selected]
+    return selected, selected_names
+
+
 def main():
     print("📦 Loading data...")
     X_df = pd.read_csv("data/X_processed.csv")
@@ -38,34 +81,40 @@ def main():
     # Drop non-numeric or redundant columns
     excluded_cols = {
         "artist(s)", "song", "album", 
-        "genre", "key", "emotion", "text", "release_date", 'release_year' 
+        "genre", "key", "emotion", "text", "release_date", "release_year",
         "popularity", "success_level"
     }
     X_df = X_df.drop(columns=[col for col in X_df.columns if col in excluded_cols])
 
     # Convert to numpy and standardize
-    X = X_df.to_numpy(dtype=np.float64)
+    X_full = X_df.to_numpy(dtype=np.float64)
     y = y_df.to_numpy(dtype=np.float64).reshape(-1, 1)
 
-    X_mean = X.mean(axis=0)
-    X_std = X.std(axis=0) + 1e-8  # prevent divide-by-zero
-    X = (X - X_mean) / X_std
-    y_mean = y.mean()
-    y = y - y_mean
+    X_mean = X_full.mean(axis=0)
+    X_std = X_full.std(axis=0) + 1e-8
+    X_full = (X_full - X_mean) / X_std
+    y = y - y.mean()
+
+    # 🔍 Forward Selection
+    print("🧮 Running forward selection...")
+    feature_names = X_df.columns.to_list()
+    selected_indices, selected_names = forward_selection(X_full, y, feature_names, min_improvement=1.0)
+    X_selected = X_full[:, selected_indices]
+
 
     # Add bias column
-    X = np.hstack([np.ones((X.shape[0], 1)), X])
+    X_selected = np.hstack([np.ones((X_selected.shape[0], 1)), X_selected])
 
-    # Split into train/test
+    # Train/test split
     np.random.seed(42)
-    indices = np.random.permutation(X.shape[0])
+    indices = np.random.permutation(X_selected.shape[0])
     split = int(0.8 * len(indices))
     train_idx, test_idx = indices[:split], indices[split:]
-    X_train, X_test = X[train_idx], X[test_idx]
+    X_train, X_test = X_selected[train_idx], X_selected[test_idx]
     y_train, y_test = y[train_idx], y[test_idx]
 
-    # Cross-validate ridge regression 
-    print("🔁 Performing manual Ridge Regression with CV...")
+    # 🔁 Ridge Regression with CV
+    print("🔁 Performing Ridge Regression with CV...")
     lambda_values = np.logspace(-3, 3, 50)
     best_lambda, all_mse = cross_val_ridge(X_train, y_train, lambda_values, k=5)
 
@@ -73,17 +122,21 @@ def main():
     train_mse = mean_squared_error(y_train, X_train @ theta_best)
     test_mse = mean_squared_error(y_test, X_test @ theta_best)
 
-    print(f"\n✅ Best lambda: {best_lambda:.4f}")
+    print(f"\n🏁 Forward selection chose {len(selected_names)} features:")
+    for i, name in enumerate(selected_names):
+        print(f"  {i+1:2d}. {name}")
+
+    print(f"✅ Best lambda: {best_lambda:.4f}")
     print(f"📉 Train MSE: {train_mse:.2f}")
     print(f"📊 Test MSE: {test_mse:.2f}")
 
-    # 📈 Plotting
+    # 📈 Plot MSE vs Lambda
     plt.figure(figsize=(8, 5))
     plt.semilogx(lambda_values, all_mse, marker='o')
     plt.axvline(best_lambda, color='red', linestyle='--', label=f'Best λ = {best_lambda:.4f}')
     plt.xlabel("Lambda")
     plt.ylabel("5-Fold Cross-Validated MSE")
-    plt.title("MSE vs Lambda")
+    plt.title("MSE vs Lambda (after Forward Selection)")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
