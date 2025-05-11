@@ -70,10 +70,18 @@ def main():
     y = df_sample[['success_level']].copy()
     y.loc[:, 'popularity'] = df_sample['popularity']
 
+    X_no_text = df.drop(columns=[col for col in drop_cols if col in df.columns]).reset_index(drop=True)
+    y_no_text = df[['success_level']].copy()
+    y_no_text.loc[:, 'popularity'] = df['popularity']
+
     # Save results
     print("Saving processed data...")
     X.to_csv('data/X_processed.csv', index=False)
     y.to_csv('data/y_labels.csv', index=False)
+
+    X_no_text.to_csv('data/X_processed_textless.csv')
+    y_no_text.to_csv('data/y_processed_textless.csv')
+
     print("Preprocessing complete.")
 
 # Helper functions
