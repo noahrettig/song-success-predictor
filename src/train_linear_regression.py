@@ -72,6 +72,36 @@ def forward_selection(X_full, y, feature_names, min_improvement=1e-2, max_featur
     selected_names = [feature_names[i] for i in selected]
     return selected, selected_names
 
+def summarize_extreme_predictions(y_true, y_pred, original_csv_path="data/spotify_dataset.csv"):
+    import pandas as pd
+    import numpy as np
+
+    residuals = y_pred - y_true
+
+    # Get indices
+    idx_most_over = np.argmax(residuals)
+    idx_most_under = np.argmin(residuals)
+    idx_true_max = np.argmax(y_true)
+    idx_pred_max = np.argmax(y_pred)
+    idx_true_min = np.argmin(y_true)
+    idx_pred_min = np.argmin(y_pred)
+
+    # Load original dataset for lookup
+    raw_df = pd.read_csv(original_csv_path)
+
+    # Helper function to safely get a song summary
+    def get_song_info(idx):
+        row = raw_df.iloc[idx]
+        return f"{row['Artist(s)']} – \"{row['song']}\" (True: {y_true[idx]:.1f}, Pred: {y_pred[idx]:.1f})"
+
+    print("\nNotable Songs:")
+    print(f"  • Most Overpredicted:     {get_song_info(idx_most_over)}")
+    print(f"  • Most Underpredicted:    {get_song_info(idx_most_under)}")
+    print(f"  • Actual Most Popular:    {get_song_info(idx_true_max)}")
+    print(f"  • Predicted Most Popular: {get_song_info(idx_pred_max)}")
+    print(f"  • Actual Least Popular:   {get_song_info(idx_true_min)}")
+    print(f"  • Predicted Least Popular:{get_song_info(idx_pred_min)}")
+
 def main():
     print("Loading data...")
     X_df = pd.read_csv("data/X_processed.csv")
@@ -94,7 +124,7 @@ def main():
 
     print("Running forward selection...")
     feature_names = X_df.columns.to_list()
-    selected_indices, selected_names = forward_selection(X_full, y, feature_names, min_improvement=1.0)
+    selected_indices, selected_names = forward_selection(X_full, y, feature_names, min_improvement=50.0, max_features=40)
     X_selected = X_full[:, selected_indices]
     X_selected = np.hstack([np.ones((X_selected.shape[0], 1)), X_selected])
 
@@ -110,6 +140,19 @@ def main():
     best_lambda, all_mse = cross_val_ridge(X_train, y_train, lambda_values, k=5)
     theta_best = ridge_theta(X_train, y_train, best_lambda)
 
+    # Show coefficients of selected features
+    print("\nRidge Regression Coefficients (after forward selection):")
+    coef_names = ["(bias)"] + selected_names  # account for the bias column added earlier
+    coef_values = theta_best.flatten()
+
+    # Create a DataFrame for easy sorting and display
+    coef_df = pd.DataFrame({
+        "Feature": coef_names,
+        "Coefficient": coef_values
+    }).sort_values(by="Coefficient", key=abs, ascending=False)
+
+    print(coef_df.to_string(index=False))
+
     print("Note: Using log-transformed popularity for training and inverting for evaluation.")
 
     # Invert log transformation for predictions
@@ -120,6 +163,8 @@ def main():
 
     y_train_pred = np.expm1(X_train @ theta_best)
     y_train = np.expm1(y_train)
+
+    summarize_extreme_predictions(y_true=y_test.flatten(), y_pred=y_test_pred.flatten())
 
     train_mse = mean_squared_error(y_train, y_train_pred)
     test_mse = mean_squared_error(y_test, y_test_pred)
