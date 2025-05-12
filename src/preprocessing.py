@@ -1,6 +1,7 @@
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.feature_extraction.text import TfidfVectorizer
 import pandas as pd
+import numpy as np
 
 def main():
     print("Loading dataset...")
@@ -9,7 +10,7 @@ def main():
 
     # Ignore "sus" attributes
     trusted_columns = [
-        'Artist(s)', 'song', 'text', 'Length', 'emotion', 'Genre', 'Album',
+        'text', 'Length', 'emotion', 'Genre',
         'Release Date', 'Key', 'Tempo', 'Loudness (db)',
         'Explicit', 'Popularity'
     ]
@@ -42,6 +43,8 @@ def main():
     df['release_date'] = pd.to_datetime(df['release_date'], errors='coerce')
     df['release_year'] = df['release_date'].dt.year
     df['years_since_release'] = 2025 - df['release_year']
+    # Log-transform years since release
+    df['years_since_release_log'] = np.log1p(df['years_since_release'])
     df['release_month'] = df['release_date'].dt.month
 
     # Expand multi-genre column
@@ -55,14 +58,14 @@ def main():
     df = encode_categorical_features(df, categorical_cols)
 
     # Normalize numerical attributes
-    numerical_cols = ['length', 'tempo', 'loudness_(db)', 'years_since_release', 'release_month']
+    numerical_cols = ['length', 'tempo', 'loudness_(db)', 'years_since_release', 'years_since_release_log', 'release_month']
     df = scale_numerical_features(df, numerical_cols)
 
     # TF-IDF vectorization
     print("Vectorizing lyrics...")
         
-    df_sample = df.sample(9000, random_state=42).reset_index(drop=True) # TEMP: sample a smaller subset to reduce memory pressure
-    # df_sample = df
+    # df_sample = df.sample(9000, random_state=42).reset_index(drop=True) # TEMP: sample a smaller subset to reduce memory pressure
+    df_sample = df
 
     tfidf_matrix, tfidf_model = tfidf_features(df_sample['text'], max_features=500)
     lyrics_df = pd.DataFrame(tfidf_matrix.toarray(), columns=tfidf_model.get_feature_names_out())
@@ -74,17 +77,34 @@ def main():
     y = df_sample[['success_level']].copy()
     y.loc[:, 'popularity'] = df_sample['popularity']
 
-    # X_no_text = df.drop(columns=[col for col in drop_cols if col in df.columns]).reset_index(drop=True)
-    # y_no_text = df[['success_level']].copy()
-    # y_no_text.loc[:, 'popularity'] = df['popularity']
+    # Drop features that are highly collinear (corr > 0.95)
+    X_numeric = X.select_dtypes(include=[np.number])
+    corr_matrix = X_numeric.corr().abs()
+    upper = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+    high_corr_cols = [col for col in upper.columns if any(upper[col] > 0.95)]
+
+    # Suggest whitelist features based on keywords
+    keywords = ['pop', 'rock', 'rap', 'trap', 'hip', 'metal', 'love', 'know', 'like', 'tempo', 'loud', 'joy', 'sad', 'happy']
+    whitelist = [col for col in high_corr_cols if any(k in col.lower() for k in keywords)]
+
+    print(f"\nDropped {len(high_corr_cols)} highly correlated columns.")
+    print("Whitelist-worthy suggestions (likely useful despite correlation):")
+    for col in whitelist:
+        print(f"  - {col}")
+
+    # Drop only those NOT in whitelist
+    to_drop = [col for col in high_corr_cols if col not in whitelist]
+    X = X.drop(columns=to_drop)
+
+    # log-scaling popularity
+    df_sample['popularity_log'] = np.log1p(df_sample['popularity'])
+    y = df_sample[['success_level']].copy()
+    y.loc[:, 'popularity'] = df_sample['popularity_log']
 
     # Save results
     print("Saving processed data...")
     X.to_csv('data/X_processed.csv', index=False)
     y.to_csv('data/y_labels.csv', index=False)
-
-    # X_no_text.to_csv('data/X_processed_textless.csv')
-    # y_no_text.to_csv('data/y_labels_textless.csv')
 
     print("Preprocessing complete.")
 
@@ -98,30 +118,32 @@ def encode_categorical_features(X, categorical_cols):
     X = pd.get_dummies(X, columns=categorical_cols)
     return X
 
-def expand_genres(df, column='genre', delimiter=','):
-    """
-    Takes a DataFrame and expands a comma-separated genre column into multi-hot encoded features.
-    """
-    # Fill NaNs with empty string to avoid errors
-    df[column] = df[column].fillna('')
-    
-    # Split genre strings into lists
-    df['genre_list'] = df[column].apply(lambda x: [g.strip() for g in x.split(delimiter) if g.strip() != ''])
-    
-    # Create dummy/multi-hot encoding
+def expand_genres(df, column='genre', delimiter=',', min_genre_count=10):
     from sklearn.preprocessing import MultiLabelBinarizer
+
+    df[column] = df[column].fillna('')
+    df['genre_list'] = df[column].apply(lambda x: [g.strip() for g in x.split(delimiter) if g.strip() != ''])
+
     mlb = MultiLabelBinarizer()
-    genre_df = pd.DataFrame(mlb.fit_transform(df['genre_list']), columns=mlb.classes_, index=df.index)
+    genre_matrix = mlb.fit_transform(df['genre_list'])
+    genre_df = pd.DataFrame(genre_matrix, columns=mlb.classes_, index=df.index)
 
-    print(f"Expanded to {len(genre_df.columns)} unique genre columns.")
+    # Identify rare genres
+    genre_counts = genre_df.sum()
+    rare_genres = genre_counts[genre_counts < min_genre_count].index
+    common_genres = genre_counts[genre_counts >= min_genre_count].index
 
-    # Drop original columns
-    df = df.drop(columns=[column, 'genre_list'])
+    # Keep common genres, drop rare ones
+    genre_common_df = genre_df[common_genres]
 
-    # Join expanded genres back in
-    df = pd.concat([df, genre_df], axis=1)
+    # Create "Other" column for songs with only rare genres
+    df['has_common_genre'] = genre_common_df.sum(axis=1) > 0
+    genre_common_df['Other'] = ~df['has_common_genre']
+    df = df.drop(columns=[column, 'genre_list', 'has_common_genre'])
 
-    return df
+    print(f"Kept {len(common_genres)} common genres. Assigned 'Other' to {genre_common_df['Other'].sum()} songs.")
+
+    return pd.concat([df, genre_common_df], axis=1)
 
 def convert_to_seconds(time_str):
     try:
