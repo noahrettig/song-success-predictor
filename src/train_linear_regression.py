@@ -82,7 +82,7 @@ def main():
     # Drop non-numeric or redundant columns
     excluded_cols = {
         "artist(s)", "song", "album", 
-        "genre", "key", "emotion", "text", "release_date", "release_year",
+        "genre", "key", "emotion", "text", "release_date", "release_year", 
         "popularity", "success_level"
     }
     X_df = X_df.drop(columns=[col for col in X_df.columns if col in excluded_cols])
@@ -101,7 +101,6 @@ def main():
     feature_names = X_df.columns.to_list()
     selected_indices, selected_names = forward_selection(X_full, y, feature_names, min_improvement=1.0)
     X_selected = X_full[:, selected_indices]
-
 
     # Add "bias" column
     X_selected = np.hstack([np.ones((X_selected.shape[0], 1)), X_selected])

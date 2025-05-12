@@ -10,7 +10,7 @@ def main():
     # Ignore "sus" attributes
     trusted_columns = [
         'Artist(s)', 'song', 'text', 'Length', 'emotion', 'Genre', 'Album',
-        'Release Date', 'Key', 'Tempo', 'Loudness (db)', 'Time signature',
+        'Release Date', 'Key', 'Tempo', 'Loudness (db)',
         'Explicit', 'Popularity'
     ]
     df = df[trusted_columns]
@@ -47,8 +47,11 @@ def main():
     # Expand multi-genre column
     df = expand_genres(df, column="genre")
 
+    # Change explicit to binary value
+    df['explicit'] = df['explicit'].str.contains("Yes", case=False).astype(int)
+
     # One-hot encode remaining categorical attributes
-    categorical_cols = ['key', 'emotion', 'time_signature', 'explicit']
+    categorical_cols = ['emotion', 'key'] 
     df = encode_categorical_features(df, categorical_cols)
 
     # Normalize numerical attributes
@@ -59,12 +62,13 @@ def main():
     print("Vectorizing lyrics...")
         
     df_sample = df.sample(9000, random_state=42).reset_index(drop=True) # TEMP: sample a smaller subset to reduce memory pressure
+    # df_sample = df
 
     tfidf_matrix, tfidf_model = tfidf_features(df_sample['text'], max_features=500)
     lyrics_df = pd.DataFrame(tfidf_matrix.toarray(), columns=tfidf_model.get_feature_names_out())
 
     # Combine features
-    drop_cols = ['release_date', 'text', 'popularity', 'success_level']
+    drop_cols = ['release_date', 'text', 'popularity', 'success_level', 'time_signature']
     X_base = df_sample.drop(columns=[col for col in drop_cols if col in df_sample.columns]).reset_index(drop=True)
     X = pd.concat([X_base, lyrics_df.reset_index(drop=True)], axis=1)
     y = df_sample[['success_level']].copy()
